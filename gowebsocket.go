@@ -165,8 +165,6 @@ func (socket *Socket) Connect() {
 }
 
 func (socket *Socket) NewClient(conn *websocket.Conn) {
-	var err error;
-
 	if conn != nil {
 		socket.Conn = conn
 	}
@@ -208,36 +206,34 @@ func (socket *Socket) NewClient(conn *websocket.Conn) {
 		return result
 	})
 
-	go func() {
-		for {
-			socket.receiveMu.Lock()
-			if socket.Timeout != 0 {
-				socket.Conn.SetReadDeadline(time.Now().Add(socket.Timeout))
+	for {
+		socket.receiveMu.Lock()
+		if socket.Timeout != 0 {
+			socket.Conn.SetReadDeadline(time.Now().Add(socket.Timeout))
+		}
+		messageType, message, err := socket.Conn.ReadMessage()
+		socket.receiveMu.Unlock()
+		if err != nil {
+			logger.Error.Println("read:", err)
+			if socket.OnDisconnected != nil {
+				socket.IsConnected = false
+				socket.OnDisconnected(err, *socket)
 			}
-			messageType, message, err := socket.Conn.ReadMessage()
-			socket.receiveMu.Unlock()
-			if err != nil {
-				logger.Error.Println("read:", err)
-				if socket.OnDisconnected != nil {
-					socket.IsConnected = false
-					socket.OnDisconnected(err, *socket)
-				}
-				return
-			}
-			logger.Info.Println("recv: %s", message)
+			return
+		}
+		logger.Info.Println("recv: %s", message)
 
-			switch messageType {
-			case websocket.TextMessage:
-				if socket.OnTextMessage != nil {
-					socket.OnTextMessage(string(message), *socket)
-				}
-			case websocket.BinaryMessage:
-				if socket.OnBinaryMessage != nil {
-					socket.OnBinaryMessage(message, *socket)
-				}
+		switch messageType {
+		case websocket.TextMessage:
+			if socket.OnTextMessage != nil {
+				socket.OnTextMessage(string(message), *socket)
+			}
+		case websocket.BinaryMessage:
+			if socket.OnBinaryMessage != nil {
+				socket.OnBinaryMessage(message, *socket)
 			}
 		}
-	}()
+	}
 }
 
 func (socket *Socket) SendText(message string) {
